@@ -23,12 +23,14 @@ from homeassistant.util.dt import now
 _LOGGER = logging.getLogger(__name__)
 
 ATTR_ACCESSIBILITY = "accessibility"
+ATTR_DEPARTURE = "departure"
 ATTR_DIRECTION = "direction"
 ATTR_LINE = "line"
 ATTR_TRACK = "track"
 ATTR_FROM = "from"
 ATTR_TO = "to"
 ATTR_DELAY = "delay"
+ATTR_NEXT = "next"
 
 CONF_DEPARTURES = "departures"
 CONF_FROM = "from"
@@ -82,6 +84,18 @@ def setup_platform(
         ),
         True,
     )
+
+
+def get_departure_time(departure):
+    """Attempt to parse estimated/planned departure time as %H:%M else None."""
+    try:
+        return datetime.fromisoformat(
+            departure["estimatedOtherwisePlannedTime"]
+        ).strftime("%H:%M")
+    except ValueError:
+        return departure["estimatedOtherwisePlannedTime"]
+    except KeyError:
+        return None
 
 
 class VasttrafikDepartureSensor(SensorEntity):
@@ -158,15 +172,6 @@ class VasttrafikDepartureSensor(SensorEntity):
 
             if self._lines and line.get("shortName") not in self._lines:
                 continue
-            if "estimatedOtherwisePlannedTime" in departure:
-                try:
-                    self._state = datetime.fromisoformat(
-                        departure["estimatedOtherwisePlannedTime"]
-                    ).strftime("%H:%M")
-                except ValueError:
-                    self._state = departure["estimatedOtherwisePlannedTime"]
-            else:
-                self._state = None
 
             stop_point = departure.get("stopPoint", {})
 
@@ -174,6 +179,7 @@ class VasttrafikDepartureSensor(SensorEntity):
                 ATTR_ACCESSIBILITY: "wheelChair"
                 if line.get("isWheelchairAccessible")
                 else None,
+                ATTR_DEPARTURE: get_departure_time(departure),
                 ATTR_DIRECTION: service_journey.get("direction"),
                 ATTR_LINE: line.get("shortName"),
                 ATTR_TRACK: stop_point.get("platform"),
@@ -182,5 +188,12 @@ class VasttrafikDepartureSensor(SensorEntity):
                 ATTR_DELAY: self._delay.seconds // 60 % 60,
             }
 
-            self._attributes = {k: v for k, v in params.items() if v}
-            break
+            if self._state is None:
+                # First departure is current state of sensor
+                self._state = params[ATTR_DEPARTURE]
+                self._attributes = {k: v for k, v in params.items() if v}
+            else:
+                # Extra departures are attributes of sensor
+                self._attributes.setdefault(ATTR_NEXT, []).append(
+                    {k: v for k, v in params.items() if v}
+                )
