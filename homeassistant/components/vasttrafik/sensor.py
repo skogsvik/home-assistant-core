@@ -147,39 +147,40 @@ class VasttrafikDepartureSensor(SensorEntity):
             )
             self._state = None
             self._attributes = {}
-        else:
-            for departure in self._departureboard:
-                service_journey = departure.get("serviceJourney", {})
-                line = service_journey.get("line", {})
+            return
 
-                if departure.get("isCancelled"):
-                    continue
-                if not self._lines or line.get("shortName") in self._lines:
-                    if "estimatedOtherwisePlannedTime" in departure:
-                        try:
-                            self._state = datetime.fromisoformat(
-                                departure["estimatedOtherwisePlannedTime"]
-                            ).strftime("%H:%M")
-                        except ValueError:
-                            self._state = departure["estimatedOtherwisePlannedTime"]
-                    else:
-                        self._state = None
+        for departure in self._departureboard:
+            if departure.get("isCancelled"):
+                continue
 
-                    stop_point = departure.get("stopPoint", {})
+            service_journey = departure.get("serviceJourney", {})
+            line = service_journey.get("line", {})
 
-                    params = {
-                        ATTR_ACCESSIBILITY: "wheelChair"
-                        if line.get("isWheelchairAccessible")
-                        else None,
-                        ATTR_DIRECTION: service_journey.get("direction"),
-                        ATTR_LINE: line.get("shortName"),
-                        ATTR_TRACK: stop_point.get("platform"),
-                        ATTR_FROM: stop_point.get("name"),
-                        ATTR_TO: self._heading["station_name"]
-                        if self._heading
-                        else "ANY",
-                        ATTR_DELAY: self._delay.seconds // 60 % 60,
-                    }
+            if self._lines and line.get("shortName") not in self._lines:
+                continue
+            if "estimatedOtherwisePlannedTime" in departure:
+                try:
+                    self._state = datetime.fromisoformat(
+                        departure["estimatedOtherwisePlannedTime"]
+                    ).strftime("%H:%M")
+                except ValueError:
+                    self._state = departure["estimatedOtherwisePlannedTime"]
+            else:
+                self._state = None
 
-                    self._attributes = {k: v for k, v in params.items() if v}
-                    break
+            stop_point = departure.get("stopPoint", {})
+
+            params = {
+                ATTR_ACCESSIBILITY: "wheelChair"
+                if line.get("isWheelchairAccessible")
+                else None,
+                ATTR_DIRECTION: service_journey.get("direction"),
+                ATTR_LINE: line.get("shortName"),
+                ATTR_TRACK: stop_point.get("platform"),
+                ATTR_FROM: stop_point.get("name"),
+                ATTR_TO: self._heading["station_name"] if self._heading else "ANY",
+                ATTR_DELAY: self._delay.seconds // 60 % 60,
+            }
+
+            self._attributes = {k: v for k, v in params.items() if v}
+            break
